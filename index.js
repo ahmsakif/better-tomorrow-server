@@ -57,7 +57,7 @@ app.get('/', (req, res) => {
 
 async function run() {
     try {
-        await client.connect()
+        // await client.connect()
 
         const db = client.db("better_tomorrow_DB")
         const eventsCollection = db.collection("events")
