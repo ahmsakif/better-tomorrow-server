@@ -57,7 +57,7 @@ app.get('/', (req, res) => {
 
 async function run() {
     try {
-        // await client.connect()
+        await client.connect()
 
         const db = client.db("better_tomorrow_DB")
         const eventsCollection = db.collection("events")
@@ -135,34 +135,65 @@ async function run() {
             }
         })
 
-        app.get('/events/upcoming', async (req, res) => {
+app.get('/all-events', async (req, res) => {
+    const { 
+        eventType, 
+        search, 
+        location, 
+        sortField = 'eventDate', 
+        sortOrder = 'asc', 
+        page = 1, 
+        limit = 8 
+    } = req.query;
 
-            const { eventType, search } = req.query
+    // 1. Build the Query Object (Filter logic)
+    const query = {};
 
-            // Upcoming events
-            const query = {
-                eventDate: { $gte: new Date().toISOString() }
-            }
-            // Filter by Event Type
-            if (eventType && eventType !== "All") {
-                query.eventType = eventType
-            }
-            // Search by Title 
-            if (search) {
-                query.title = { $regex: search, $options: "i" }
-            }
+    // Search by Title (Case-insensitive)
+    if (search) {
+        query.title = { $regex: search, $options: "i" };
+    }
 
-            const cursor = eventsCollection.find(query).sort({ eventDate: 1 })
-            const result = await cursor.toArray()
-            res.send(result)
-        })
+    // Filter 1: Category
+    if (eventType && eventType !== "All") {
+        query.eventType = eventType;
+    }
 
-        app.get('/events/:id', async (req, res) => {
-            const id = req.params.id
-            const query = { _id: new ObjectId(id) }
-            const result = await eventsCollection.findOne(query)
-            res.send(result)
-        })
+    // Filter 2: Location
+    if (location) {
+        query.location = { $regex: location, $options: "i" };
+    }
+
+    // 2. Dynamic Sorting
+    const sortOptions = {};
+    sortOptions[sortField] = sortOrder === 'desc' ? -1 : 1;
+
+    // 3. Pagination Math
+    const pageNumber = parseInt(page);
+    const limitNumber = parseInt(limit);
+    const skip = (pageNumber - 1) * limitNumber;
+
+    try {
+        // Fetch total count for pagination metadata
+        const totalCount = await eventsCollection.countDocuments(query);
+        
+        const result = await eventsCollection.find(query)
+            .sort(sortOptions)
+            .skip(skip)
+            .limit(limitNumber)
+            .toArray();
+
+        // Send structured response for frontend state management
+        res.send({
+            events: result,
+            totalCount,
+            totalPages: Math.ceil(totalCount / limitNumber),
+            currentPage: pageNumber
+        });
+    } catch (error) {
+        res.status(500).send({ message: "Server failed to process analytical query", error });
+    }
+});
 
 
 
@@ -253,9 +284,36 @@ async function run() {
             }
         })
 
+        // New Endpoint for Dashboard Statistics
+        app.get('/user-stats', verifyFireBaseToken, async (req, res) => {
+            const email = req.query.email;
+            if (email !== req.token_email) return res.status(403).send({ message: 'Forbidden' });
+
+            try {
+                const joinedCount = await joinedCollection.countDocuments({ userEmail: email });
+                const createdCount = await eventsCollection.countDocuments({ creatorEmail: email });
+
+                // Calculate category distribution for your Statistics focus
+                const createdEvents = await eventsCollection.find({ creatorEmail: email }).toArray();
+                const categories = createdEvents.reduce((acc, event) => {
+                    acc[event.eventType] = (acc[event.eventType] || 0) + 1;
+                    return acc;
+                }, {});
+
+                res.send({
+                    joinedCount,
+                    createdCount,
+                    categories,
+                    impactScore: (joinedCount * 10) + (createdCount * 50)
+                });
+            } catch (error) {
+                res.status(500).send({ message: "Error fetching stats" });
+            }
+        });
+
         // Send Ping to confirm connection
-        // await client.db("admin").command({ ping: 1 })
-        // console.log("Pinged you deployment. Connected to MongoDB");
+        await client.db("admin").command({ ping: 1 })
+        console.log("Pinged you deployment. Connected to MongoDB");
     }
     finally {
 
