@@ -63,6 +63,8 @@ async function run() {
         const eventsCollection = db.collection("events")
         const usersCollection = db.collection("users")
         const joinedCollection = db.collection("joined")
+        const blogsCollection = db.collection("blogs")
+        const subscribersCollection = db.collection("subscriber")
 
         // API
 
@@ -135,65 +137,65 @@ async function run() {
             }
         })
 
-app.get('/all-events', async (req, res) => {
-    const { 
-        eventType, 
-        search, 
-        location, 
-        sortField = 'eventDate', 
-        sortOrder = 'asc', 
-        page = 1, 
-        limit = 8 
-    } = req.query;
+        app.get('/all-events', async (req, res) => {
+            const {
+                eventType,
+                search,
+                location,
+                sortField = 'eventDate',
+                sortOrder = 'asc',
+                page = 1,
+                limit = 8
+            } = req.query;
 
-    // 1. Build the Query Object (Filter logic)
-    const query = {};
+            // 1. Build the Query Object (Filter logic)
+            const query = {};
 
-    // Search by Title (Case-insensitive)
-    if (search) {
-        query.title = { $regex: search, $options: "i" };
-    }
+            // Search by Title (Case-insensitive)
+            if (search) {
+                query.title = { $regex: search, $options: "i" };
+            }
 
-    // Filter 1: Category
-    if (eventType && eventType !== "All") {
-        query.eventType = eventType;
-    }
+            // Filter 1: Category
+            if (eventType && eventType !== "All") {
+                query.eventType = eventType;
+            }
 
-    // Filter 2: Location
-    if (location) {
-        query.location = { $regex: location, $options: "i" };
-    }
+            // Filter 2: Location
+            if (location) {
+                query.location = { $regex: location, $options: "i" };
+            }
 
-    // 2. Dynamic Sorting
-    const sortOptions = {};
-    sortOptions[sortField] = sortOrder === 'desc' ? -1 : 1;
+            // 2. Dynamic Sorting
+            const sortOptions = {};
+            sortOptions[sortField] = sortOrder === 'desc' ? -1 : 1;
 
-    // 3. Pagination Math
-    const pageNumber = parseInt(page);
-    const limitNumber = parseInt(limit);
-    const skip = (pageNumber - 1) * limitNumber;
+            // 3. Pagination Math
+            const pageNumber = parseInt(page);
+            const limitNumber = parseInt(limit);
+            const skip = (pageNumber - 1) * limitNumber;
 
-    try {
-        // Fetch total count for pagination metadata
-        const totalCount = await eventsCollection.countDocuments(query);
-        
-        const result = await eventsCollection.find(query)
-            .sort(sortOptions)
-            .skip(skip)
-            .limit(limitNumber)
-            .toArray();
+            try {
+                // Fetch total count for pagination metadata
+                const totalCount = await eventsCollection.countDocuments(query);
 
-        // Send structured response for frontend state management
-        res.send({
-            events: result,
-            totalCount,
-            totalPages: Math.ceil(totalCount / limitNumber),
-            currentPage: pageNumber
+                const result = await eventsCollection.find(query)
+                    .sort(sortOptions)
+                    .skip(skip)
+                    .limit(limitNumber)
+                    .toArray();
+
+                // Send structured response for frontend state management
+                res.send({
+                    events: result,
+                    totalCount,
+                    totalPages: Math.ceil(totalCount / limitNumber),
+                    currentPage: pageNumber
+                });
+            } catch (error) {
+                res.status(500).send({ message: "Server failed to process analytical query", error });
+            }
         });
-    } catch (error) {
-        res.status(500).send({ message: "Server failed to process analytical query", error });
-    }
-});
 
 
 
@@ -310,6 +312,133 @@ app.get('/all-events', async (req, res) => {
                 res.status(500).send({ message: "Error fetching stats" });
             }
         });
+
+        app.post('/blogs', verifyFireBaseToken, async (req, res) => {
+            try {
+                const blogData = req.body;
+
+                // Basic check to ensure data exists before inserting
+                if (!blogData || Object.keys(blogData).length === 0) {
+                    return res.status(400).send({ message: "Empty manuscript data." });
+                }
+
+                // Ensure we are not sending an undefined or null eventDate
+                if (!blogData.eventDate) {
+                    return res.status(400).send({ message: "Event Occurrence date is mandatory." });
+                }
+
+                const result = await blogsCollection.insertOne(blogData);
+                res.status(201).send(result);
+
+            } catch (error) {
+                console.error("Critical Node Failure:", error); // This will show the real error in your terminal
+                res.status(500).send({
+                    message: "Internal Server Error during manuscript commit.",
+                    error: error.message
+                });
+            }
+        });
+
+        // GET Blogs API with Pagination and Search
+        // GET Blogs API with Advanced Sorting & Pagination
+        app.get('/blogs', async (req, res) => {
+            const {
+                search,
+                page = 1,
+                limit = 6,
+                sortBy = 'createdAt', // Default: System creation time
+                order = 'desc'
+            } = req.query;
+
+            // 1. Filter Logic: Case-insensitive search by title
+            const query = {};
+            if (search) {
+                query.title = { $regex: search, $options: "i" };
+            }
+
+            // 2. Dynamic Sorting
+            const sortOptions = {};
+            // Supports: 'createdAt', 'eventDate', or 'postDate'
+            sortOptions[sortBy] = order === 'asc' ? 1 : -1;
+
+            // 3. Pagination Math
+            const pageNumber = parseInt(page);
+            const limitNumber = parseInt(limit);
+            const skip = (pageNumber - 1) * limitNumber;
+
+            try {
+                // Fetch total count for the frontend pagination component
+                const totalCount = await blogsCollection.countDocuments(query);
+
+                // Execute query with sorting and pagination
+                const result = await blogsCollection.find(query)
+                    .sort(sortOptions)
+                    .skip(skip)
+                    .limit(limitNumber)
+                    .toArray();
+
+                // 4. Structured Response for Frontend State
+                res.send({
+                    blogs: result,
+                    totalCount,
+                    totalPages: Math.ceil(totalCount / limitNumber),
+                    currentPage: pageNumber
+                });
+            } catch (error) {
+                res.status(500).send({
+                    message: "Node failure: Could not fetch repository articles.",
+                    error
+                });
+            }
+        });
+
+        // GET Single Blog by ID
+        app.get('/blog/:id', async (req, res) => {
+            const id = req.params.id;
+            try {
+                const query = { _id: new ObjectId(id) };
+                const result = await blogsCollection.findOne(query);
+                if (!result) {
+                    return res.status(404).send({ message: "Manuscript not found in repository." });
+                }
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Node error: Invalid ID format." });
+            }
+        });
+
+
+// POST: Add new subscriber
+app.post('/subscribers', async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        // 1. Basic validation
+        if (!email) {
+            return res.status(400).send({ message: "Email is required for synchronization." });
+        }
+
+        // 2. Prevent duplicates: Check if node already exists
+        const existingSubscriber = await subscribersCollection.findOne({ email });
+        if (existingSubscriber) {
+            return res.status(409).send({ message: "This email is already part of the movement." });
+        }
+
+        // 3. Construct Subscriber Object
+        const subscriberData = {
+            email,
+            status: "active",
+            subscribedAt: new Date().toISOString(),
+            source: "Newsletter Component"
+        };
+
+        const result = await subscribersCollection.insertOne(subscriberData);
+        res.status(201).send(result);
+    } catch (error) {
+        console.error("Newsletter Sync Error:", error);
+        res.status(500).send({ message: "Internal server error during subscription." });
+    }
+});
 
         // Send Ping to confirm connection
         await client.db("admin").command({ ping: 1 })
