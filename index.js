@@ -408,37 +408,37 @@ async function run() {
         });
 
 
-// POST: Add new subscriber
-app.post('/subscribers', async (req, res) => {
-    try {
-        const { email } = req.body;
+        // POST: Add new subscriber
+        app.post('/subscribers', async (req, res) => {
+            try {
+                const { email } = req.body;
 
-        // 1. Basic validation
-        if (!email) {
-            return res.status(400).send({ message: "Email is required for synchronization." });
-        }
+                // 1. Basic validation
+                if (!email) {
+                    return res.status(400).send({ message: "Email is required for synchronization." });
+                }
 
-        // 2. Prevent duplicates: Check if node already exists
-        const existingSubscriber = await subscribersCollection.findOne({ email });
-        if (existingSubscriber) {
-            return res.status(409).send({ message: "This email is already part of the movement." });
-        }
+                // 2. Prevent duplicates: Check if node already exists
+                const existingSubscriber = await subscribersCollection.findOne({ email });
+                if (existingSubscriber) {
+                    return res.status(409).send({ message: "This email is already part of the movement." });
+                }
 
-        // 3. Construct Subscriber Object
-        const subscriberData = {
-            email,
-            status: "active",
-            subscribedAt: new Date().toISOString(),
-            source: "Newsletter Component"
-        };
+                // 3. Construct Subscriber Object
+                const subscriberData = {
+                    email,
+                    status: "active",
+                    subscribedAt: new Date().toISOString(),
+                    source: "Newsletter Component"
+                };
 
-        const result = await subscribersCollection.insertOne(subscriberData);
-        res.status(201).send(result);
-    } catch (error) {
-        console.error("Newsletter Sync Error:", error);
-        res.status(500).send({ message: "Internal server error during subscription." });
-    }
-});
+                const result = await subscribersCollection.insertOne(subscriberData);
+                res.status(201).send(result);
+            } catch (error) {
+                console.error("Newsletter Sync Error:", error);
+                res.status(500).send({ message: "Internal server error during subscription." });
+            }
+        });
 
         // Send Ping to confirm connection
         await client.db("admin").command({ ping: 1 })
