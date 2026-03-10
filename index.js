@@ -59,7 +59,7 @@ async function run() {
     try {
         await client.connect()
 
-        const db = client.db("better_tomorrow_DB")
+        const db = client.db("better-tomorrow")
         const eventsCollection = db.collection("events")
         const usersCollection = db.collection("users")
         const joinedCollection = db.collection("joined")
